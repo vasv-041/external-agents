@@ -25,6 +25,18 @@ External agents communicate with Entire CLI via subcommands that accept and retu
 
 See each agent's own README for setup and usage instructions.
 
+### Interactive Demo
+
+The Qwen integration includes a dependency-free browser demo for presentations. Open
+`demo/index.html` directly, or serve the repository root with any static file server:
+
+```bash
+python -m http.server 8080
+```
+
+Then visit `http://localhost:8080/demo/`. The playground demonstrates hook normalization,
+the new JSONL event shape, safe handling of unknown events, and transcript chunking.
+
 ## Enabling External Agents
 
 External agent discovery is opt-in. Once an `entire-agent-<name>` binary is on your `PATH`, set `external_agents: true` in the repo's `.entire/settings.json` so Entire scans for it:

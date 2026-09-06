@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Interactive demo for the Entire Qwen external agent integration">
+    <title>Entire / Qwen protocol lab</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <div class="grain"></div>
+    <header class="topbar">
+      <a class="brand" href="#top" aria-label="Entire Qwen protocol lab home">
+        <span class="brand-mark">E</span>
+        <span>ENTIRE <em>/</em> QWEN</span>
+      </a>
+      <div class="topbar-meta"><span class="pulse"></span> protocol lab <span class="version">v1</span></div>
+    </header>
+
+    <main id="top">
+      <section class="hero">
+        <div class="hero-copy">
+          <p class="eyebrow">External agent integration</p>
+          <h1>Make every<br><span>turn recoverable.</span></h1>
+          <p class="lede">A small, inspectable playground for the Qwen Code adapter. Send protocol-shaped input, watch it become an Entire event, and see what reaches a checkpoint.</p>
+          <div class="hero-actions">
+            <a class="button button-primary" href="#playground">Open playground <span>↓</span></a>
+            <a class="button button-quiet" href="../agents/entire-agent-qwen/README.md">Read integration notes <span>↗</span></a>
+          </div>
+        </div>
+        <div class="hero-card">
+          <div class="card-label">LIVE FLOW</div>
+          <div class="flow-row"><span class="flow-icon qwen">Q</span><span>Qwen hook</span><span class="flow-line"></span><span class="flow-icon entire">E</span><span>Entire event</span></div>
+          <div class="flow-code"><span>{</span><br><span class="indent">"event": <b>"TurnStart"</b>,</span><br><span class="indent">"session": <b>"demo-001"</b></span><br><span>}</span></div>
+          <div class="card-foot"><span class="status-dot"></span> sidecar ready <span class="slash">/</span> checkpoint compatible</div>
+        </div>
+      </section>
+
+      <section class="stats" aria-label="Integration capabilities">
+        <div><strong>02</strong><span>transcript formats</span></div>
+        <div><strong>14</strong><span>recognized hook events</span></div>
+        <div><strong>∞</strong><span>unknown events tolerated</span></div>
+      </section>
+
+      <section class="playground" id="playground">
+        <div class="section-heading"><div><p class="eyebrow">01 / Protocol playground</p><h2>Send a signal.</h2></div><p class="section-note">No server required. This UI mirrors the adapter's core normalization paths for a fast demo.</p></div>
+        <div class="lab-grid">
+          <div class="panel input-panel">
+            <div class="panel-head"><span>INPUT</span><span class="mono muted">stdin.json</span></div>
+            <label for="operation">Operation</label>
+            <select id="operation">
+              <option value="hook">parse-hook / user-prompt-submit</option>
+              <option value="new-format">normalize / new JSONL event</option>
+              <option value="unknown">normalize / unknown event</option>
+              <option value="chunk">chunk-transcript</option>
+            </select>
+            <label for="payload">Payload</label>
+            <textarea id="payload" spellcheck="false"></textarea>
+            <div class="panel-actions"><button class="button button-primary" id="run">Run simulation <span>↗</span></button><button class="text-button" id="reset">Reset input</button></div>
+          </div>
+          <div class="panel output-panel">
+            <div class="panel-head"><span>OUTPUT</span><span class="output-state" id="output-state">ready</span></div>
+            <pre id="output" aria-live="polite"></pre>
+            <div class="output-caption"><span class="status-dot"></span><span id="output-caption">Waiting for input</span></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="timeline-section">
+        <div class="section-heading"><div><p class="eyebrow">02 / Lifecycle trace</p><h2>One session, fully legible.</h2></div><p class="section-note">The adapter keeps the original signal intact while giving Entire a stable language for checkpoints.</p></div>
+        <div class="timeline">
+          <div class="timeline-item"><span class="timeline-number">01</span><div><strong>SessionStart</strong><p>Qwen opens a session and the sidecar gets its stable reference.</p></div><span class="tag tag-blue">captured</span></div>
+          <div class="timeline-item"><span class="timeline-number">02</span><div><strong>TurnStart</strong><p>User intent becomes a prompt record that can be resumed.</p></div><span class="tag tag-green">normalized</span></div>
+          <div class="timeline-item"><span class="timeline-number">03</span><div><strong>Tool activity</strong><p>File reads, writes, and results stay available for change analysis.</p></div><span class="tag tag-amber">tracked</span></div>
+          <div class="timeline-item"><span class="timeline-number">04</span><div><strong>Checkpoint</strong><p>Compact transcript and metadata remain compatible with Entire rewind.</p></div><span class="tag tag-pink">recoverable</span></div>
+        </div>
+      </section>
+    </main>
+
+    <footer><span>ENTIRE / QWEN CODE</span><span>Built for the Track 3 demo</span><span class="mono">external-agent-qwen</span></footer>
+    <script src="app.js"></script>
+  </body>
+</html>
