@@ -336,7 +336,7 @@ func TestExtractModifiedFilesNestedAndShellInputs(t *testing.T) {
 	}
 }
 
-func TestTranscriptAnalysisAndCompactTranscript(t *testing.T) {
+func TestOriginalSidecarTranscriptAnalysisAndCompactTranscript(t *testing.T) {
 	repo := t.TempDir()
 	t.Setenv("ENTIRE_REPO_ROOT", repo)
 	agent := New()
@@ -483,17 +483,28 @@ func TestNewTranscriptFixturePreservesCheckpointCompatibleData(t *testing.T) {
 	}
 }
 
-func TestUnknownAndIncompleteTranscriptRecordsPreservePartialSession(t *testing.T) {
-	data := []byte("{\"event\":\"user_prompt\",\"session_id\":\"s\",\"text\":\"keep this\"}\n{\"event\":\"future_event\",\"session_id\":\"s\"}\n{\"event\":\"agent_response\"")
+func TestUnknownTranscriptEventsAreIgnored(t *testing.T) {
+	data := []byte("{\"event\":\"user_prompt\",\"session_id\":\"s\",\"text\":\"keep this\"}\n{\"event\":\"future_event\",\"session_id\":\"s\"}\n{\"v\":1,\"event\":\"FutureQwenHook\",\"session_id\":\"s\"}")
 	records, err := parseSidecarRecords(data)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(records) != 2 || records[1].Event != "future_event" {
-		t.Fatalf("expected valid and unknown records to survive, got %#v", records)
+	if len(records) != 1 || records[0].Event != "UserPromptSubmit" {
+		t.Fatalf("unknown events should be ignored, got %#v", records)
 	}
 	if prompts := promptsFromRecords(records); len(prompts) != 1 || prompts[0] != "keep this" {
-		t.Fatalf("partial session lost prompt: %#v", prompts)
+		t.Fatalf("unexpected prompts: %#v", prompts)
+	}
+}
+
+func TestIncompleteTranscriptPreservesCompleteRecords(t *testing.T) {
+	data := []byte("{\"event\":\"user_prompt\",\"session_id\":\"s\",\"text\":\"keep this\"}\n{\"event\":\"agent_response\"")
+	records, err := parseSidecarRecords(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(records) != 1 || records[0].Prompt != "keep this" {
+		t.Fatalf("partial session lost valid records: %#v", records)
 	}
 	if _, err := compactTranscriptBytes(data); err != nil {
 		t.Fatalf("partial transcript should compact: %v", err)

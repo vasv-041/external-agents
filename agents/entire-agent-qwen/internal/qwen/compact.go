@@ -5,8 +5,8 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
-	"strings"
 
 	"github.com/entireio/external-agents/agents/entire-agent-qwen/internal/protocol"
 )
@@ -140,14 +140,21 @@ func compactTranscriptBytes(data []byte) ([]byte, error) {
 func parseSidecarRecords(data []byte) ([]sidecarRecord, error) {
 	lines := bytes.Split(data, []byte("\n"))
 	records := make([]sidecarRecord, 0, len(lines))
-	for _, line := range lines {
+	for i, line := range lines {
 		line = bytes.TrimSpace(line)
 		if len(line) == 0 {
 			continue
 		}
-		record, ok := parseTranscriptRecord(line)
-		if !ok {
-			// A partially written final JSONL line must not discard prior session data.
+		record, recognized, err := parseTranscriptRecord(line)
+		if err != nil {
+			if hasNonEmptyLine(lines[i+1:]) {
+				return nil, fmt.Errorf("parse transcript record: %w", err)
+			}
+			// The final JSONL record may be mid-write when Entire checkpoints.
+			break
+		}
+		if !recognized {
+			// Newer Qwen versions can add event kinds without affecting a checkpoint.
 			continue
 		}
 		records = append(records, record)
@@ -155,44 +162,18 @@ func parseSidecarRecords(data []byte) ([]sidecarRecord, error) {
 	return records, nil
 }
 
-func parseTranscriptRecord(line []byte) (sidecarRecord, bool) {
-	var envelope struct {
-		Event     string          `json:"event"`
-		Timestamp string          `json:"timestamp"`
-		SessionID string          `json:"session_id"`
-		Text      string          `json:"text"`
-		Tool      string          `json:"tool"`
-		CallID    string          `json:"call_id"`
-		Input     json.RawMessage `json:"input"`
-		Output    json.RawMessage `json:"output"`
-		Path      string          `json:"path"`
-		Summary   string          `json:"summary"`
+func hasNonEmptyLine(lines [][]byte) bool {
+	for _, line := range lines {
+		if len(bytes.TrimSpace(line)) != 0 {
+			return true
+		}
 	}
-	if err := json.Unmarshal(line, &envelope); err != nil {
-		return sidecarRecord{}, false
-	}
-
-	if isNewTranscriptEvent(envelope.Event) {
-		return normalizeNewTranscriptEvent(envelope), true
-	}
-
-	var record sidecarRecord
-	if err := json.Unmarshal(line, &record); err != nil {
-		return sidecarRecord{}, false
-	}
-	return record, true
+	return false
 }
 
-func isNewTranscriptEvent(event string) bool {
-	switch event {
-	case "session_started", "user_prompt", "agent_response", "tool_call", "tool_result", "file_read", "file_changed", "usage", "checkpoint_created", "session_ended":
-		return true
-	default:
-		return strings.Contains(event, "_")
-	}
-}
-
-func normalizeNewTranscriptEvent(raw struct {
+// transcriptEnvelope lets both the hook-owned sidecar and Qwen's event JSONL
+// flow through the same normalizer before the analyzer consumes them.
+type transcriptEnvelope struct {
 	Event     string          `json:"event"`
 	Timestamp string          `json:"timestamp"`
 	SessionID string          `json:"session_id"`
@@ -203,9 +184,32 @@ func normalizeNewTranscriptEvent(raw struct {
 	Output    json.RawMessage `json:"output"`
 	Path      string          `json:"path"`
 	Summary   string          `json:"summary"`
-}) sidecarRecord {
+}
+
+func parseTranscriptRecord(line []byte) (sidecarRecord, bool, error) {
+	var envelope transcriptEnvelope
+	if err := json.Unmarshal(line, &envelope); err != nil {
+		return sidecarRecord{}, false, err
+	}
+
+	var original sidecarRecord
+	if isOriginalTranscriptEvent(envelope.Event) {
+		if err := json.Unmarshal(line, &original); err != nil {
+			return sidecarRecord{}, false, err
+		}
+	}
+	return normalizeTranscriptEvent(envelope, original)
+}
+
+func normalizeTranscriptEvent(raw transcriptEnvelope, original sidecarRecord) (sidecarRecord, bool, error) {
+	if isOriginalTranscriptEvent(raw.Event) {
+		return original, true, nil
+	}
+
 	record := sidecarRecord{V: 1, Agent: AgentName, Event: raw.Event, SessionID: raw.SessionID, TS: raw.Timestamp}
 	switch raw.Event {
+	case "session_started":
+		record.Event = "SessionStart"
 	case "user_prompt":
 		record.Event, record.Prompt = "UserPromptSubmit", raw.Text
 	case "agent_response":
@@ -218,8 +222,27 @@ func normalizeNewTranscriptEvent(raw struct {
 		record.Event, record.FilePath, record.CompactSummary = "FileChanged", raw.Path, raw.Summary
 	case "checkpoint_created":
 		record.Event, record.CompactSummary = "CheckpointCreated", raw.Summary
+	case "file_read":
+		record.Event = "FileRead"
+	case "usage":
+		record.Event = "Usage"
+	case "session_ended":
+		record.Event = "SessionEnd"
+	default:
+		return sidecarRecord{}, false, nil
 	}
-	return record
+	return record, true, nil
+}
+
+func isOriginalTranscriptEvent(event string) bool {
+	switch event {
+	case "SessionStart", "UserPromptSubmit", "PreToolUse", "Stop", "StopFailure", "SessionEnd",
+		"PreCompact", "PostCompact", "PostToolUse", "PostToolUseFailure", "Notification",
+		"PermissionRequest", "SubagentStart", "SubagentStop":
+		return true
+	default:
+		return false
+	}
 }
 
 func writeCompactLine(buf *bytes.Buffer, line compactLine) error {
