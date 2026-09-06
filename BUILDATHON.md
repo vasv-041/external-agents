@@ -27,3 +27,10 @@
 ```cmd
 cd agents/entire-agent-qwen
 go build -o entire-agent-qwen.exe ./cmd/entire-agent-qwen
+
+
+## 4. Noon Curveball Adaptation (The Agent Changed Its Format)
+
+* **Assumption Invalidated:** Static transcript structure and single lifecycle event format.
+* **Architectural Changes:** Updated `internal/qwen` parser to support dual-format parsing (legacy and new JSONL format), added non-blocking handlers for unknown events, and implemented partial summary extraction for truncated streams.
+* **Verification & Safety:** Added test coverage for original formats, the `track-3-agent-session` fixture, unhandled event types, and incomplete transcripts. Verified via `go test ./...`.
