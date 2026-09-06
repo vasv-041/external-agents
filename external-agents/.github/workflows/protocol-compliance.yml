@@ -1,0 +1,58 @@
+name: Protocol Compliance
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  discover-agents:
+    runs-on: ubuntu-latest
+    outputs:
+      count: ${{ steps.discover.outputs.count }}
+      matrix: ${{ steps.discover.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - id: discover
+        shell: bash
+        run: |
+          count=0
+          entries=""
+
+          while IFS= read -r dir; do
+            name="$(basename "$dir")"
+            if [[ -n "$entries" ]]; then
+              entries="${entries},"
+            fi
+            entries="${entries}{\"name\":\"${name}\",\"dir\":\"${dir}\",\"binary\":\"${dir}/${name}\"}"
+            count=$((count + 1))
+          done < <(find agents -mindepth 1 -maxdepth 1 -type d -name 'entire-agent-*' | sort)
+
+          echo "count=${count}" >> "$GITHUB_OUTPUT"
+          echo "matrix={\"include\":[${entries}]}" >> "$GITHUB_OUTPUT"
+
+  test-agents:
+    name: test-agents (${{ matrix.name }})
+    needs: discover-agents
+    if: ${{ needs.discover-agents.outputs.count != '0' }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.discover-agents.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - uses: jdx/mise-action@c37c93293d6b742fc901e1406b8f764f6fb19dac # v2.4.4
+
+      - name: Build agent binary
+        run: mise run build "${{ matrix.dir }}"
+
+      - name: Run protocol compliance suite
+        uses: entireio/external-agents-tests@3220ca8cc7ba2fbfc5a951ce4a5937ca1a5ca26e # main
+        with:
+          binary-path: ${{ matrix.binary }}

@@ -1,0 +1,56 @@
+---
+- - :permit
+  - MIT
+  - :who:
+    :why:
+    :versions: []
+    :when: 2026-04-20 00:00:00.000000000 Z
+- - :permit
+  - ISC
+  - :who:
+    :why:
+    :versions: []
+    :when: 2026-04-20 00:00:00.000000000 Z
+- - :permit
+  - New BSD
+  - :who:
+    :why:
+    :versions: []
+    :when: 2026-04-20 00:00:00.000000000 Z
+- - :permit
+  - BSD-2-Clause
+  - :who:
+    :why:
+    :versions: []
+    :when: 2026-04-20 00:00:00.000000000 Z
+- - :permit
+  - BSD-3-Clause
+  - :who:
+    :why:
+    :versions: []
+    :when: 2026-04-20 00:00:00.000000000 Z
+- - :permit
+  - Apache-2.0
+  - :who:
+    :why:
+    :versions: []
+    :when: 2026-04-20 00:00:00.000000000 Z
+- - :permit
+  - MPL-2.0
+  - :who:
+    :why:
+    :versions: []
+    :when: 2026-04-20 00:00:00.000000000 Z
+- - :permit
+  - CC0-1.0
+  - :who:
+    :why:
+    :versions: []
+    :when: 2026-04-20 00:00:00.000000000 Z
+- - :license
+  - modernc.org/mathutil
+  - BSD-3-Clause
+  - :who:
+    :why: License text matches BSD-3-Clause but LicenseFinder cannot auto-detect it (no SPDX identifier in the LICENSE file). Pulled in transitively by modernc.org/sqlite, the embedded SQLite driver used by entire-agent-kiro for Kiro CLI conversation lookup.
+    :versions: []
+    :when: 2026-05-06 00:00:00.000000000 Z
