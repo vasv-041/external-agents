@@ -141,4 +141,5 @@ type sidecarRecord struct {
 	LastAssistantMessage string          `json:"last_assistant_message,omitempty"`
 	CustomInstructions   string          `json:"custom_instructions,omitempty"`
 	CompactSummary       string          `json:"compact_summary,omitempty"`
+	FilePath             string          `json:"file_path,omitempty"`
 }

@@ -450,3 +450,52 @@ func TestSessionReadWriteAndChunking(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestNewTranscriptFixturePreservesCheckpointCompatibleData(t *testing.T) {
+	fixture := filepath.Join("..", "..", "..", "..", "fixtures", "track-3-agent-session.jsonl")
+	data, err := os.ReadFile(fixture)
+	if err != nil {
+		t.Fatal(err)
+	}
+	records, err := parseSidecarRecords(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(records) != 17 {
+		t.Fatalf("expected all fixture records, got %d", len(records))
+	}
+	if prompts := promptsFromRecords(records); len(prompts) != 1 || !strings.Contains(prompts[0], "coupon validation") {
+		t.Fatalf("unexpected prompts: %#v", prompts)
+	}
+	files := modifiedFilesFromRecords(records)
+	if strings.Join(files, ",") != "src/checkout/apply_coupon.ts,tests/checkout/apply_coupon.test.ts" {
+		t.Fatalf("unexpected changed files: %#v", files)
+	}
+	if summary, ok := summaryFromRecords(records); !ok || summary != "Coupon validation implemented and tested." {
+		t.Fatalf("unexpected summary %q ok=%v", summary, ok)
+	}
+	compacted, err := compactTranscriptBytes(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(compacted), `"type":"user"`) || !strings.Contains(string(compacted), `"tool_use"`) {
+		t.Fatalf("fixture did not produce checkpoint-compatible compact transcript:\n%s", compacted)
+	}
+}
+
+func TestUnknownAndIncompleteTranscriptRecordsPreservePartialSession(t *testing.T) {
+	data := []byte("{\"event\":\"user_prompt\",\"session_id\":\"s\",\"text\":\"keep this\"}\n{\"event\":\"future_event\",\"session_id\":\"s\"}\n{\"event\":\"agent_response\"")
+	records, err := parseSidecarRecords(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(records) != 2 || records[1].Event != "future_event" {
+		t.Fatalf("expected valid and unknown records to survive, got %#v", records)
+	}
+	if prompts := promptsFromRecords(records); len(prompts) != 1 || prompts[0] != "keep this" {
+		t.Fatalf("partial session lost prompt: %#v", prompts)
+	}
+	if _, err := compactTranscriptBytes(data); err != nil {
+		t.Fatalf("partial transcript should compact: %v", err)
+	}
+}

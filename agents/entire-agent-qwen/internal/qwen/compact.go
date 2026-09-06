@@ -5,8 +5,8 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"os"
+	"strings"
 
 	"github.com/entireio/external-agents/agents/entire-agent-qwen/internal/protocol"
 )
@@ -63,6 +63,12 @@ func compactTranscriptBytes(data []byte) ([]byte, error) {
 		return nil, err
 	}
 	var buf bytes.Buffer
+	toolResults := make(map[string]json.RawMessage)
+	for _, record := range records {
+		if record.Event == "ToolResult" && len(record.ToolResponse) > 0 {
+			toolResults[record.ToolUseID] = record.ToolResponse
+		}
+	}
 	for _, record := range records {
 		switch record.Event {
 		case "UserPromptSubmit":
@@ -79,7 +85,7 @@ func compactTranscriptBytes(data []byte) ([]byte, error) {
 			}); err != nil {
 				return nil, err
 			}
-		case "PostToolUse", "PostToolUseFailure":
+		case "PostToolUse", "PostToolUseFailure", "ToolCall":
 			block := compactToolUseBlock{
 				Type:  "tool_use",
 				ID:    record.ToolUseID,
@@ -88,6 +94,8 @@ func compactTranscriptBytes(data []byte) ([]byte, error) {
 			}
 			if len(record.ToolResponse) > 0 {
 				block.Result = &compactToolResult{Output: string(record.ToolResponse), Status: "success"}
+			} else if result, ok := toolResults[record.ToolUseID]; ok {
+				block.Result = &compactToolResult{Output: string(result), Status: "success"}
 			}
 			if record.Error != "" || record.ErrorDetails != "" {
 				block.Result = &compactToolResult{Output: record.Error + " " + record.ErrorDetails, Status: "error"}
@@ -103,7 +111,7 @@ func compactTranscriptBytes(data []byte) ([]byte, error) {
 			}); err != nil {
 				return nil, err
 			}
-		case "Stop", "StopFailure":
+		case "Stop", "StopFailure", "AgentResponse", "CheckpointCreated":
 			text := record.LastAssistantMessage
 			if text == "" {
 				text = record.ErrorDetails
@@ -137,13 +145,81 @@ func parseSidecarRecords(data []byte) ([]sidecarRecord, error) {
 		if len(line) == 0 {
 			continue
 		}
-		var record sidecarRecord
-		if err := json.Unmarshal(line, &record); err != nil {
-			return nil, fmt.Errorf("parse sidecar record: %w", err)
+		record, ok := parseTranscriptRecord(line)
+		if !ok {
+			// A partially written final JSONL line must not discard prior session data.
+			continue
 		}
 		records = append(records, record)
 	}
 	return records, nil
+}
+
+func parseTranscriptRecord(line []byte) (sidecarRecord, bool) {
+	var envelope struct {
+		Event     string          `json:"event"`
+		Timestamp string          `json:"timestamp"`
+		SessionID string          `json:"session_id"`
+		Text      string          `json:"text"`
+		Tool      string          `json:"tool"`
+		CallID    string          `json:"call_id"`
+		Input     json.RawMessage `json:"input"`
+		Output    json.RawMessage `json:"output"`
+		Path      string          `json:"path"`
+		Summary   string          `json:"summary"`
+	}
+	if err := json.Unmarshal(line, &envelope); err != nil {
+		return sidecarRecord{}, false
+	}
+
+	if isNewTranscriptEvent(envelope.Event) {
+		return normalizeNewTranscriptEvent(envelope), true
+	}
+
+	var record sidecarRecord
+	if err := json.Unmarshal(line, &record); err != nil {
+		return sidecarRecord{}, false
+	}
+	return record, true
+}
+
+func isNewTranscriptEvent(event string) bool {
+	switch event {
+	case "session_started", "user_prompt", "agent_response", "tool_call", "tool_result", "file_read", "file_changed", "usage", "checkpoint_created", "session_ended":
+		return true
+	default:
+		return strings.Contains(event, "_")
+	}
+}
+
+func normalizeNewTranscriptEvent(raw struct {
+	Event     string          `json:"event"`
+	Timestamp string          `json:"timestamp"`
+	SessionID string          `json:"session_id"`
+	Text      string          `json:"text"`
+	Tool      string          `json:"tool"`
+	CallID    string          `json:"call_id"`
+	Input     json.RawMessage `json:"input"`
+	Output    json.RawMessage `json:"output"`
+	Path      string          `json:"path"`
+	Summary   string          `json:"summary"`
+}) sidecarRecord {
+	record := sidecarRecord{V: 1, Agent: AgentName, Event: raw.Event, SessionID: raw.SessionID, TS: raw.Timestamp}
+	switch raw.Event {
+	case "user_prompt":
+		record.Event, record.Prompt = "UserPromptSubmit", raw.Text
+	case "agent_response":
+		record.Event, record.LastAssistantMessage = "AgentResponse", raw.Text
+	case "tool_call":
+		record.Event, record.ToolName, record.ToolUseID, record.ToolInput = "ToolCall", raw.Tool, raw.CallID, copyRawMessage(raw.Input)
+	case "tool_result":
+		record.Event, record.ToolUseID, record.ToolResponse = "ToolResult", raw.CallID, copyRawMessage(raw.Output)
+	case "file_changed":
+		record.Event, record.FilePath, record.CompactSummary = "FileChanged", raw.Path, raw.Summary
+	case "checkpoint_created":
+		record.Event, record.CompactSummary = "CheckpointCreated", raw.Summary
+	}
+	return record
 }
 
 func writeCompactLine(buf *bytes.Buffer, line compactLine) error {

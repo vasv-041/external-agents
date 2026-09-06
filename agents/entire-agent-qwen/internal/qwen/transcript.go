@@ -1,7 +1,6 @@
 package qwen
 
 import (
-	"bufio"
 	"bytes"
 	"encoding/json"
 	"errors"
@@ -158,13 +157,7 @@ func (a *Agent) ExtractPrompts(path string, offset int) ([]string, error) {
 	if offset > len(records) {
 		offset = len(records)
 	}
-	var prompts []string
-	for _, record := range records[offset:] {
-		if record.Event == "UserPromptSubmit" && strings.TrimSpace(record.Prompt) != "" {
-			prompts = append(prompts, record.Prompt)
-		}
-	}
-	return prompts, nil
+	return promptsFromRecords(records[offset:]), nil
 }
 
 func (a *Agent) ExtractSummary(path string) (string, bool, error) {
@@ -175,19 +168,34 @@ func (a *Agent) ExtractSummary(path string) (string, bool, error) {
 	if err != nil {
 		return "", false, err
 	}
+	summary, hasSummary := summaryFromRecords(records)
+	return summary, hasSummary, nil
+}
+
+func promptsFromRecords(records []sidecarRecord) []string {
+	var prompts []string
+	for _, record := range records {
+		if record.Event == "UserPromptSubmit" && strings.TrimSpace(record.Prompt) != "" {
+			prompts = append(prompts, record.Prompt)
+		}
+	}
+	return prompts
+}
+
+func summaryFromRecords(records []sidecarRecord) (string, bool) {
 	for i := len(records) - 1; i >= 0; i-- {
 		record := records[i]
 		if strings.TrimSpace(record.LastAssistantMessage) != "" {
-			return record.LastAssistantMessage, true, nil
+			return record.LastAssistantMessage, true
 		}
 		if strings.TrimSpace(record.ErrorDetails) != "" {
-			return record.ErrorDetails, true, nil
+			return record.ErrorDetails, true
 		}
 		if strings.TrimSpace(record.CompactSummary) != "" {
-			return record.CompactSummary, true, nil
+			return record.CompactSummary, true
 		}
 	}
-	return "", false, nil
+	return "", false
 }
 
 func (a *Agent) appendSidecar(raw qwenHookInputRaw) error {
@@ -317,31 +325,20 @@ func safeFilename(name string) string {
 }
 
 func readSidecarRecords(path string) ([]sidecarRecord, error) {
-	f, err := os.Open(path)
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = f.Close() }()
-
-	var records []sidecarRecord
-	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" {
-			continue
-		}
-		var record sidecarRecord
-		if err := json.Unmarshal([]byte(line), &record); err != nil {
-			return nil, err
-		}
-		records = append(records, record)
-	}
-	return records, scanner.Err()
+	return parseSidecarRecords(data)
 }
 
 func modifiedFilesFromRecords(records []sidecarRecord) []string {
 	seen := map[string]struct{}{}
 	for _, record := range records {
+		if record.Event == "FileChanged" && strings.TrimSpace(record.FilePath) != "" {
+			seen[record.FilePath] = struct{}{}
+			continue
+		}
 		if !isFileModificationTool(record.ToolName) {
 			continue
 		}
