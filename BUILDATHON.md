@@ -24,7 +24,7 @@
 ## 3. Verification & Testing
 
 ### Build the Binary
-```cmd
+
 cd agents/entire-agent-qwen
 go build -o entire-agent-qwen.exe ./cmd/entire-agent-qwen
 
